@@ -1,0 +1,914 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import os
+from datetime import datetime
+
+try:
+    from docx import Document
+    from docx.shared import Inches, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    HAS_DOCX = True
+except ImportError:
+    HAS_DOCX = False
+
+# Создание основного окна
+root = tk.Tk()
+root.title("Электромонтажный калькулятор")
+root.geometry("1600x800")
+root.resizable(True, True)
+
+# Основные цвета
+BG_COLOR = '#212120'
+CONTENT_BG = '#203243'
+ACCENT_COLOR = '#57adff'
+TEXT_COLOR = 'white'
+ENTRY_BG = 'yellow'
+ENTRY_FG = 'black'
+
+# Данные для калькуляторов всех вкладок
+calculator_data = {
+    'Прокладка кабель-канала, монтаж лотков и пластиковых труб': [
+        ("Прокладка-кабель канала до 25х40 мм", "м", 150),
+        ("Прокладка-кабель канала до 40х60 мм", "м", 200),
+        ("Прокладка-кабель канала до 60х120 мм", "м", 250),
+        ("Монтаж ПНД-трубы Ø до 40 мм", "м", 100),
+        ("Монтаж ПВХ-трубы Ø до 40 мм", "м", 120),
+        ("Прокладка металлической трубы Ø до 40 мм", "м", 240),
+        ("Монтаж металлического лотка (короба) до 200 мм", "м", 400),
+        ("Монтаж металлического лотка (короба) до 400 мм", "м", 500),
+        ("Монтаж крышки металлического короба до 200 мм", "м", 70),
+        ("Монтаж крышки металлического короба до 400 мм", "шт", 90),
+        ("Монтаж кронштейна для крепления лотка (короба) до 200 мм", "шт", 250),
+        ("Монтаж кронштейна для крепления лотка (короба) до 400 мм", "шт", 280)
+    ],
+    'Монтаж соединительных коробок и подрозетников': [
+        ("Монтаж открытой коробки на дерево, гипсокартон", "шт", 150),
+        ("Монтаж открытой коробки на бетон", "шт", 250),
+        ("Монтаж скрытой коробки в готовое отверстие", "шт", 100),
+        ("Установка подрозетника в ГКЛ", "шт", 100),
+        ("Установка подрозетника на алебастр", "шт", 100),
+        ("Расключение р\к, WAGO", "шт", 600),
+        ("Расключение р\к, опрессовка ГМЛ", "шт", 900)
+    ],
+    'Установка розеток и выключателей': [
+        ("Монтаж розеток, выключателей, переключателей в готовое отверстие", "шт", 300),
+        ("Установка двухклавишного, перекрестного переключателя в готовое отверстие", "шт", 350),
+        ("Установка компьютерной, телефонной, антенной розетки в готовое отверстие", "шт", 300),
+        ("Монтаж наружных розеток, выключателей, переключателей", "шт", 400),
+        ("Установка наружного двухклавишного, перекрестного переключателя", "шт", 400),
+        ("Установка наружной компьютерной, телефонной, антенной розетки", "шт", 350),
+        ("Установка и подключение розетки/вилки для электроплиты 220В", "шт", 600),
+        ("Установка и подключение розетки/вилки для электроплиты 380В", "шт", 800),
+        ("Установка диммера освещения, кнопки диммера", "шт", 750),
+        ("Замена розетки/выключателя в старой установочной коробке", "шт", 400),
+        ("Замена розетки/выключателя открытого типа", "шт", 400),
+        ("Замена блока выключателей туалет/ванна/кухня", "шт", 900)
+    ],
+    'Сверление отверстий под розетки, коробки': [
+        ("Сверление отверстия (68 мм) под розетку, выключатель, соединительную коробку в гипсокартоне", "шт", 150),
+        ("Сверление отверстия (68 мм) под розетку, выключатель, соединительную коробку в мягких материалах", "шт", 200),
+        ("Сверление отверстия (68 мм) под розетку, выключатель, соединительную коробку в кирпичных стенах и газобетоне",
+         "шт", 300),
+        ("Сверление отверстия (68 мм) под розетку, выключатель, соединительную коробку в бетоне, монолите", "шт", 400),
+        ("Высверливание отверстия под внутреннюю распределительную коробку (100 мм) в кирпиче и газобетоне", "шт", 300),
+        ("Высверливание отверстия под внутреннюю распределительную коробку (100 мм) в бетоне", "шт", 600)
+    ],
+    'Освещение': [
+        ("Установка и подключение люстры, потолочного светильника (без сборки) простого типа", "шт", 550),
+        ("Установка и подключение люстры, потолочного светильника (без сборки) сложного типа", "шт", 900),
+        ("Установка настенного светильника, бра (без сборки) простого типа", "шт", 550),
+        ("Установка настенного светильника, бра (без сборки) сложного типа", "шт", 750),
+        ("Установка и подключение встроенного точечного светильника в готовое отверстие", "шт", 200),
+        ("Разметка и сверление отверстия под встраиваемый светильник Ø до 100 мм в гипсокартоне", "шт", 250),
+        ("Разметка и сверление отверстия под встраиваемый светильник Ø до 100 мм в реечном потолке", "шт", 350),
+        ("Монтаж и подключение светодиодной ленты", "м", 150),
+        ("Установка и подключение трансформатора 12/24 Вольта", "шт", 350),
+        ("Установка и подключение драйвера для светодиодной ленты, светильников", "шт", 350),
+        ("Монтаж металлического профиля под светодиодную ленту", "шт", 200),
+        ("Установка и подключение люминесцентного светильника в потолок «Армстронг»", "шт", 400),
+        ("Установка и подключение люминесцентного светильника 2х18, 2х36, 2х58", "шт", 600),
+        ("Установка и подключение люминесцентного светильника 4х18, 4х36, 4х58", "шт", 800),
+        ("Монтаж шинопровода, токовой шины, трековой системы", "шт", 900),
+        ("Установка и подключение уличного светильника (прожектора) до 1000 Вт", "шт", 900),
+        ("Сборка люстры, потолочного светильника простого типа", "шт", 550),
+        ("Сборка люстры, потолочного светильника сложного типа", "шт", 900),
+        ("Сборка бра, настенного светильника простого типа", "шт", 350),
+        ("Сборка бра, настенного светильника сложного типа", "шт", 550),
+        ("Установка декоративных элементов на люстру, светильник", "шт", 20),
+        ("Монтаж подвесного патрона для временного освещения", "шт", 70),
+        ("Монтаж крюка для подвеса люстры", "шт", 250),
+        ("Замена люминесцентных ламп", "шт", 70),
+        ("Замена лампы накаливания, галогенной, светодиодной", "шт", 50),
+        ("Замена стартера", "шт", 70)
+    ],
+    'Электрощиты': [
+        ("Сборка электрощита до 6 модулей под ключ", "шт", 2200),
+        ("Сборка электрощита до 8 модулей под ключ", "шт", 2400),
+        ("Сборка электрощита до 12 модулей под ключ", "шт", 3600),
+        ("Сборка электрощита до 18 модулей под ключ", "шт", 5400),
+        ("Сборка электрощита до 24 модулей под ключ", "шт", 7200),
+        ("Сборка электрощита до 36 модулей под ключ", "шт", 10800),
+        ("Сборка электрощита до 48 модулей под ключ", "шт", 14400),
+        ("Сборка электрощита до 54 модулей под ключ", "шт", 16200),
+        ("Сборка электрощита до 72 модулей под ключ", "шт", 21500),
+        ("Штробление ниши под электрощит до 12 модулей в бетоне, монолите", "шт", 2400),
+        ("Штробление ниши под электрощит до 18 модулей в бетоне, монолите", "шт", 3600),
+        ("Штробление ниши под электрощит до 24 модулей в бетоне, монолите", "шт", 4800),
+        ("Штробление ниши под электрощит до 36 модулей в бетоне, монолите", "шт", 5400),
+        ("Штробление ниши под электрощит до 48 модулей в бетоне, монолите", "шт", 7200),
+        ("Штробление ниши под электрощит до 54 модулей в бетоне, монолите", "шт", 8100),
+        ("Штробление ниши под электрощит до 72 модулей в бетоне, монолите", "шт", 11000),
+        ("Устройство ниши под электрощит до 12 модулей в кирпиче, газобетоне", "шт", 1800),
+        ("Устройство ниши под электрощит до 18 модулей в кирпиче, газобетоне", "шт", 2400),
+        ("Устройство ниши под электрощит до 24 модулей в кирпиче, газобетоне", "шт", 3000),
+        ("Устройство ниши под электрощит до 36 модулей в кирпиче, газобетоне", "шт", 3600),
+        ("Устройство ниши под электрощит до 48 модулей в кирпиче, газобетоне", "шт", 4800),
+        ("Устройство ниши под электрощит до 54 модулей в кирпиче, газобетоне", "шт", 5400),
+        ("Устройство ниши под электрощит до 72 модулей в кирпиче, газобетоне", "шт", 7200),
+        ("Вырезание ниши под электрощит до 12 модулей в мягких материалах", "шт", 1500),
+        ("Вырезание ниши под электрощит до 18 модулей в мягких материалах", "шт", 1900),
+        ("Вырезание ниши под электрощит до 24 модулей в мягких материалах", "шт", 2400),
+        ("Вырезание ниши под электрощит до 36 модулей в мягких материалах", "шт", 3000),
+        ("Вырезание ниши под электрощит до 48 модулей в мягких материалах", "шт", 3600),
+        ("Вырезание ниши под электрощит до 54 модулей в мягких материалах", "шт", 4200),
+        ("Вырезание ниши под электрощит до 72 модулей в мягких материалах", "шт", 5600),
+        ("Установка накладного (навесного) щита до 24 модулей", "шт", 600),
+        ("Установка накладного (навесного) щита от 36 модулей", "шт", 900),
+        ("Установка внутреннего (встраиваемого) щита до 24 модулей в готовую нишу", "шт", 900),
+        ("Установка внутреннего (встраиваемого) щита от 36 модулей в готовую нишу", "шт", 1350)
+    ],
+    'Установка и замена автоматов/УЗО/реле/счётчика, работы в щите': [
+        ("Установка и подключение автомата однополюсного", "шт", 350),
+        ("Установка и подключение автомата двухполюсного", "шт", 500),
+        ("Установка и подключение автомата трехполюсного", "шт", 600),
+        ("Установка и подключение УЗО, ДИФ автомата двухполюсного", "шт", 500),
+        ("Установка и подключение УЗО, ДИФ автомата четырехполюсного", "шт", 750),
+        ("Установка и подключение однофазного электросчетчика", "шт", 900),
+        ("Установка и подключение трехфазного электросчетчика", "шт", 1800),
+        ("Установка модулей дополнительной защиты (УЗМ, OVR)", "шт", 750),
+        ("Установка магнитного пускателя (модульного контактора) однофазного", "шт", 450),
+        ("Установка магнитного пускателя (модульного контактора) трехфазного", "шт", 750),
+        ("Установка и подключение реле автоматического переключения", "шт", 500),
+        ("Установка DIN-рейки в электрощите", "шт", 120),
+        ("Установка нулевой и заземляющей шины на DIN-рейку", "шт", 120),
+        ("Подключение силовой линии 220 Вольт в общедомовом щите", "шт", 700),
+        ("Подключение силовой линии 380 Вольт в общедомовом щите", "шт", 900),
+        ("Подключение линий TV и телефонных к линии в щитке", "шт", 350)
+    ],
+    'Подключение техники и оборудования': [
+        ("Установка и подключение вентилятора канального накладного до Ø100", "шт", 600),
+        ("Установка (крепление) телевизора до 31″ дюймов на стену", "шт", 900),
+        ("Установка (крепление) телевизора от 32″ до 39″ дюймов на стену", "шт", 1300),
+        ("Установка (крепление) телевизора от 40″ до 49″ дюймов на стену", "шт", 1900),
+        ("Установка (крепление) телевизора от 50″ до 69″ дюймов на стену", "шт", 2500),
+        ("Установка (крепление) телевизора от 70″ дюймов на стену", "шт", 3700),
+        ("Установка и подключение антенного делителя в квартире", "шт", 350),
+        ("Монтаж видеодомофона (вызывной панели)", "шт", 700),
+        ("Монтаж видеодомофона (монитора)", "шт", 2100),
+        ("Монтаж блока сопряжения видеодомофона", "шт", 700),
+        ("Установка и подключение звонка электрического", "шт", 500),
+        ("Установка и подключение кнопки звонка", "шт", 200)
+    ],
+    'Контур заземления': [
+        ("Установка модульного заземления 6 м («для дачи»)", "шт", 8000),
+        ("Установка модульного заземления 9 м", "шт", 9000),
+        ("Установка модульного заземления 12 м", "шт", 10000),
+        ("Установка модульного заземления 15 м", "шт", 11000)
+    ],
+    'Дополнительные работы': [
+        ("Демонтаж, монтаж плинтуса", "м", 40),
+        ("Уборка строительным пылесосом", "м²", 50),
+        ("Вынос строительного мусора после окончания работ (на лифте) за мешок", "шт", 150),
+        ("Подъем комплекта инструмента до квартиры (не работает или отсутствует лифт)", "эт", 100),
+        ("Монтаж временного освещения и розеток на объекте", "м²", 100),
+        ("Составление сметы удаленно по фото и технической документации", "шт", 2000),
+        ("Составление сметы с выездом инженера Кировский район ЛО", "шт", 5000),
+        ("Составление сметы с выездом инженера Санкт-Петербург и ЛО", "шт", 7000)
+    ],
+    'Штробление без пыли': [
+        ("Штроба размером до 20х20 мм в гипсолите, мягк.м", "м", 200),
+        ("Штроба размером до 20х20 мм в кирпиче", "м", 300),
+        ("Штроба размером до 20х20 мм в бетоне, монолите", "м", 400),
+        ("Штробление размер 50х50 мм по пенобетону, мягк.м", "м", 300),
+        ("Штробление размер 50х50 мм по кирпичу", "м", 400),
+        ("Штробление размер 50х50 мм по бетоне", "м", 500),
+        ("Черновая замазка штробы (без оштукатуривания)", "м", 70)
+    ],
+    'Сквозное сверление стен': [
+        ("Сквозное сверление Ø25 мм стены из кирпича до 20 см", "шт", 250),
+        ("Сквозное сверление Ø25 мм стены из бетона до 20 см", "шт", 350),
+        ("Сквозное сверление Ø25 мм стены из кирпича до 35 см", "шт", 350),
+        ("Сквозное сверление Ø25 мм стены из бетона до 35 см", "шт", 600),
+        ("Сквозное сверление Ø25 мм стены из кирпича до 50 см", "шт", 450),
+        ("Сквозное сверление Ø25 мм стены из бетона до 50 см", "шт", 750),
+        ("Сквозное сверление Ø25 мм стены из кирпича до 100 см", "шт", 750)
+    ],
+    'Монтаж ретро-проводки': [
+        ("Прокладка готового ретро провода на роликах (изоляторах)", "м", 150),
+        ("Ручное плетение провода", "м", 100),
+        ("Монтаж одиночного изолятора для ретро провода", "шт", 30),
+        ("Монтаж двойного изолятора для ретро провода", "шт", 50),
+        ("Монтаж и расключение распределительной коробки в стиле ретро", "шт", 600),
+        ("Монтаж проходного керамического переключателя", "шт", 900),
+        ("Монтаж однополюсного выключателя или двухполюсной розетки в стиле ретро", "шт", 500),
+        ("Подготовка поверхности для установки (вырубка, шлифовка)", "шт", 900),
+        ("Обработка деревянной поверхности антисептиком", "шт", 100)
+    ],
+    'Работы на ВЛ-0,4кВ': [
+        ("Подъем на опору ВЛ-0,4кВ (без учета стоимости работ)", "п", 2000),
+        ("Монтаж провода СИП 4х16", "м", 250),
+        ("Монтаж провода СИП 4х25", "м", 270),
+        ("Монтаж провода СИП 4х35", "м", 290),
+        ("Монтаж провода СИП 4х50", "м", 320),
+        ("Монтаж провода СИП 4х70", "м", 350),
+        ("Монтаж провода СИП 4х90", "м", 370),
+        ("Монтаж провода СИП 4х120", "м", 390),
+        ("Установка прокалывающего зажима", "шт", 150),
+        ("Автовышка (4 часа минимальный заказ)", "ч", 2000)
+    ]
+}
+
+# Глобальные переменные
+calculator_entries = {}
+cost_labels = {}
+tab_states = {}
+tab_content_widgets = {}
+tab_buttons = {}
+tabs_content = {}
+
+# Переменные для общей стоимости
+total_cost_global = 0.0
+total_cost_label = None
+selected_services = []
+
+# Переменные для информации о проекте
+project_name = ""
+customer_name = ""
+project_address = ""
+
+# Создание содержимого для всех вкладок
+for tab_name in calculator_data.keys():
+    tabs_content[tab_name] = {
+        'header': f'{tab_name}',
+        'has_calculator': True
+    }
+
+
+# Функции для работы с калькулятором
+def calculate_global_total():
+    """Рассчитать общую стоимость по всем вкладкам"""
+    global total_cost_global, selected_services
+
+    total_cost_global = 0.0
+    selected_services = []
+
+    # Проходим по всем вкладкам
+    for tab_name in calculator_data.keys():
+        if tab_name in calculator_entries:
+            entries_list = calculator_entries[tab_name]
+
+            for i, entry in enumerate(entries_list):
+                if i < len(calculator_data[tab_name]):
+                    service, unit, price = calculator_data[tab_name][i]
+                    quantity_text = entry.get()
+                    if quantity_text.strip():
+                        try:
+                            quantity = float(quantity_text)
+                            if quantity > 0:
+                                service_total = quantity * price
+                                total_cost_global += service_total
+
+                                # Добавляем услугу в список для детализации
+                                selected_services.append({
+                                    'tab': tab_name,
+                                    'service': service,
+                                    'unit': unit,
+                                    'price': price,
+                                    'quantity': quantity,
+                                    'total': service_total
+                                })
+                        except ValueError:
+                            pass
+
+    # Обновляем отображение общей стоимости
+    if total_cost_label:
+        total_cost_label.config(text=f"ИТОГО ПО ВСЕМ КАТЕГОРИЯМ: {total_cost_global:.2f} руб.")
+
+    # Обновляем детализацию
+    update_selected_services()
+
+
+def update_selected_services():
+    """Обновить список выбранных услуг"""
+    if not selected_services_frame:
+        return
+
+    # Очищаем фрейм
+    for widget in selected_services_frame.winfo_children():
+        widget.destroy()
+
+    # Добавляем заголовок
+    if selected_services:
+        tk.Label(selected_services_frame, text="Выбранные услуги:",
+                 font=('Arial', 10, 'bold'), fg=ACCENT_COLOR, bg=BG_COLOR,
+                 anchor='w').pack(fill='x', pady=(0, 5))
+
+        # Ограничиваем количество отображаемых услуг
+        max_display = 10
+        services_to_display = selected_services[:max_display]
+
+        for item in services_to_display:
+            service_text = f"{item['service']} - {item['quantity']} {item['unit']} × {item['price']} руб. = {item['total']:.2f} руб."
+            tk.Label(selected_services_frame, text=service_text,
+                     font=('Arial', 9), fg=TEXT_COLOR, bg=BG_COLOR,
+                     anchor='w', justify='left', wraplength=800).pack(fill='x', pady=(0, 2))
+
+        # Показываем сколько еще услуг
+        if len(selected_services) > max_display:
+            remaining = len(selected_services) - max_display
+            tk.Label(selected_services_frame, text=f"... и еще {remaining} услуг",
+                     font=('Arial', 9, 'italic'), fg='#cccccc', bg=BG_COLOR).pack()
+    else:
+        tk.Label(selected_services_frame, text="Нет выбранных услуг",
+                 font=('Arial', 9, 'italic'), fg='#cccccc', bg=BG_COLOR).pack()
+
+
+def clear_all_entries():
+    """Очистить все поля ввода во всех вкладках"""
+    for tab_name in calculator_entries:
+        for entry in calculator_entries[tab_name]:
+            entry.delete(0, tk.END)
+            entry.insert(0, "0")
+
+    # Обнуляем все метки стоимости
+    for tab_name in cost_labels:
+        for label in cost_labels[tab_name]:
+            label.config(text="0.00")
+
+    calculate_global_total()
+
+
+def update_row_cost(quantity_var, cost_label, price):
+    """Обновить стоимость строки и общую стоимость"""
+    try:
+        qty = float(quantity_var.get()) if quantity_var.get().strip() else 0
+        if qty >= 0:
+            row_total = qty * price
+            cost_label.config(text=f"{row_total:.2f}")
+        else:
+            cost_label.config(text="0.00")
+    except ValueError:
+        cost_label.config(text="0.00")
+
+    # Пересчитываем общую стоимость
+    calculate_global_total()
+
+
+def toggle_tab(tab_name):
+    """Переключение вкладки"""
+    content_frame = tab_content_widgets[tab_name]
+
+    if tab_states[tab_name]:
+        # Закрыть вкладку
+        content_frame.pack_forget()
+        tab_states[tab_name] = False
+        display_name = tab_name[:30] + '...' if len(tab_name) > 30 else tab_name
+        tab_buttons[tab_name].config(text=f'▶ {display_name}')
+    else:
+        # Закрыть все остальные вкладки
+        for name in tabs_content.keys():
+            if name != tab_name and tab_states[name]:
+                tab_content_widgets[name].pack_forget()
+                tab_states[name] = False
+                display_name = name[:30] + '...' if len(name) > 30 else name
+                tab_buttons[name].config(text=f'▶ {display_name}')
+
+        # Открыть выбранную вкладку
+        content_frame.pack(fill='both', expand=True, padx=(10, 0), pady=(0, 0))
+        tab_states[tab_name] = True
+        display_name = tab_name[:30] + '...' if len(tab_name) > 30 else tab_name
+        tab_buttons[tab_name].config(text=f'▼ {display_name}')
+
+
+def create_calculator_tab(tab_container, tab_name, services_data):
+    """Создание вкладки с калькулятором"""
+    content_frame = tk.Frame(tab_container, bg=CONTENT_BG, relief='flat')
+
+    # Заголовок
+    header_label = tk.Label(content_frame, text=f"{tab_name}",
+                            bg=CONTENT_BG, fg=ACCENT_COLOR,
+                            font=('Arial', 12, 'bold'), justify='left')
+    header_label.pack(anchor='w', padx=(10, 10), pady=(10, 5))
+
+    separator1 = tk.Frame(content_frame, height=2, bg=ACCENT_COLOR)
+    separator1.pack(fill='x', padx=5, pady=(0, 10))
+
+    # Главный контейнер с прокруткой
+    main_container = tk.Frame(content_frame, bg=CONTENT_BG)
+    main_container.pack(fill='both', expand=True, padx=5, pady=5)
+
+    # Создаем Canvas для прокрутки
+    canvas = tk.Canvas(main_container, bg=CONTENT_BG, highlightthickness=0)
+    scrollbar = tk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
+    scrollable_frame = tk.Frame(canvas, bg=CONTENT_BG)
+
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    canvas.pack(side="left", fill="both", expand=True, padx=(0, 5))
+    scrollbar.pack(side="right", fill="y")
+
+    # Заголовки столбцов
+    headers_frame = tk.Frame(scrollable_frame, bg=CONTENT_BG)
+    headers_frame.pack(fill='x', pady=(0, 10))
+
+    # Услуга (шире)
+    tk.Label(headers_frame, text="Услуга",
+             font=('Arial', 10, 'bold'), fg=ACCENT_COLOR, bg=CONTENT_BG,
+             width=45, anchor='w').grid(row=0, column=0, padx=(0, 10), sticky='w')
+
+    # Единица измерения
+    tk.Label(headers_frame, text="Ед.",
+             font=('Arial', 10, 'bold'), fg=ACCENT_COLOR, bg=CONTENT_BG,
+             width=6, anchor='w').grid(row=0, column=1, padx=(0, 10), sticky='w')
+
+    # Цена
+    tk.Label(headers_frame, text="Цена",
+             font=('Arial', 10, 'bold'), fg=ACCENT_COLOR, bg=CONTENT_BG,
+             width=10, anchor='w').grid(row=0, column=2, padx=(0, 10), sticky='w')
+
+    # Количество (шире и выделенный)
+    tk.Label(headers_frame, text="Кол-во",
+             font=('Arial', 10, 'bold'), fg='yellow', bg=CONTENT_BG,
+             width=15, anchor='w').grid(row=0, column=3, padx=(0, 10), sticky='w')
+
+    # Стоимость строки
+    tk.Label(headers_frame, text="Стоимость",
+             font=('Arial', 10, 'bold'), fg=ACCENT_COLOR, bg=CONTENT_BG,
+             width=15, anchor='w').grid(row=0, column=4, padx=(0, 10), sticky='w')
+
+    # Инициализируем списки для этой вкладки
+    calculator_entries[tab_name] = []
+    cost_labels[tab_name] = []
+
+    # Создаем строки с услугами
+    for i, (service, unit, price) in enumerate(services_data):
+        row_frame = tk.Frame(scrollable_frame, bg=CONTENT_BG)
+        row_frame.pack(fill='x', pady=(3, 3))
+
+        # Название услуги
+        service_label = tk.Label(row_frame, text=service,
+                                 bg=CONTENT_BG, fg=TEXT_COLOR,
+                                 font=('Arial', 9), wraplength=400, justify='left',
+                                 width=45, anchor='w')
+        service_label.grid(row=0, column=0, padx=(0, 10), sticky='w')
+
+        # Единица измерения
+        unit_label = tk.Label(row_frame, text=unit,
+                              bg=CONTENT_BG, fg=TEXT_COLOR,
+                              font=('Arial', 9), width=6, anchor='w')
+        unit_label.grid(row=0, column=1, padx=(0, 10), sticky='w')
+
+        # Цена
+        price_label = tk.Label(row_frame, text=str(price),
+                               bg=CONTENT_BG, fg=TEXT_COLOR,
+                               font=('Arial', 9), width=10, anchor='w')
+        price_label.grid(row=0, column=2, padx=(0, 10), sticky='w')
+
+        # Поле для ввода количества
+        quantity_var = tk.StringVar()
+        quantity_entry = tk.Entry(row_frame, textvariable=quantity_var,
+                                  font=('Arial', 10, 'bold'),
+                                  bg=ENTRY_BG, fg=ENTRY_FG,
+                                  width=15, justify='center',
+                                  relief='solid', bd=2,
+                                  insertbackground='black')
+        quantity_entry.grid(row=0, column=3, padx=(0, 10), ipady=3)
+        quantity_entry.insert(0, "0")
+
+        # Метка для отображения стоимости строки
+        cost_label = tk.Label(row_frame, text="0.00",
+                              bg=CONTENT_BG, fg=TEXT_COLOR,
+                              font=('Arial', 9), width=15, anchor='w')
+        cost_label.grid(row=0, column=4, padx=(0, 10), sticky='w')
+
+        # Функция для обновления стоимости строки
+        def make_update_func(var, lbl, prc):
+            return lambda *args: update_row_cost(var, lbl, prc)
+
+        # Привязываем обновление к изменению текста
+        update_func = make_update_func(quantity_var, cost_label, price)
+        quantity_var.trace('w', update_func)
+
+        # Сохраняем ссылки
+        calculator_entries[tab_name].append(quantity_entry)
+        cost_labels[tab_name].append(cost_label)
+
+    return content_frame
+
+
+# Функции для создания сметы в Word
+def create_estimate_docx():
+    """Создать документ Word со сметой"""
+    if not HAS_DOCX:
+        messagebox.showerror("Ошибка", "Библиотека python-docx не установлена.\nУстановите: pip install python-docx")
+        return
+
+    if not selected_services:
+        messagebox.showwarning("Предупреждение", "Нет выбранных услуг для создания сметы")
+        return
+
+    # Спросим информацию о проекте
+    ask_project_info()
+
+    # Если пользователь отменил ввод информации
+    if not project_name:
+        return
+
+    # Спросим куда сохранить
+    file_path = filedialog.asksaveasfilename(
+        defaultextension=".docx",
+        filetypes=[("Word документы", "*.docx"), ("Все файлы", "*.*")],
+        initialfile=f"Смета_{project_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+    )
+
+    if not file_path:
+        return
+
+    try:
+        # Создаем документ
+        doc = Document()
+
+        # Настройки страницы
+        section = doc.sections[0]
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+
+        # Заголовок
+        title = doc.add_heading('СМЕТА НА ЭЛЕКТРОМОНТАЖНЫЕ РАБОТЫ', 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Информация о проекте
+        doc.add_paragraph(f"Название проекта: {project_name}")
+        doc.add_paragraph(f"Заказчик: {customer_name}")
+        doc.add_paragraph(f"Адрес объекта: {project_address}")
+        doc.add_paragraph(f"Дата составления: {datetime.now().strftime('%d.%m.%Y')}")
+        doc.add_paragraph("")
+
+        # Таблица с услугами
+        table = doc.add_table(rows=1, cols=6)
+        table.style = 'Light Grid Accent 1'
+
+        # Заголовки таблицы
+        hdr_cells = table.rows[0].cells
+        headers = ['№', 'Наименование работ', 'Ед. изм.', 'Кол-во', 'Цена за ед., руб.', 'Стоимость, руб.']
+
+        for i, header in enumerate(headers):
+            hdr_cells[i].text = header
+            hdr_cells[i].paragraphs[0].runs[0].bold = True
+
+        # Заполняем таблицу данными
+        total_sum = 0
+        row_num = 1
+
+        # Группируем услуги по категориям
+        services_by_category = {}
+        for service in selected_services:
+            category = service['tab']
+            if category not in services_by_category:
+                services_by_category[category] = []
+            services_by_category[category].append(service)
+
+        # Добавляем услуги в таблицу
+        for category, services in services_by_category.items():
+            # Заголовок категории
+            row_cells = table.add_row().cells
+            row_cells[1].text = f"--- {category.upper()} ---"
+            row_cells[1].paragraphs[0].runs[0].bold = True
+            row_cells[1].merge(row_cells[5])
+            row_num += 1
+
+            # Услуги в категории
+            for service in services:
+                row_cells = table.add_row().cells
+                row_cells[0].text = str(row_num)
+                row_cells[1].text = service['service']
+                row_cells[2].text = service['unit']
+                row_cells[3].text = str(service['quantity'])
+                row_cells[4].text = str(service['price'])
+                row_cells[5].text = f"{service['total']:.2f}"
+                row_num += 1
+                total_sum += service['total']
+
+        # Итоговая строка
+        row_cells = table.add_row().cells
+        row_cells[0].text = ""
+        row_cells[1].text = "ВСЕГО:"
+        row_cells[1].paragraphs[0].runs[0].bold = True
+        row_cells[1].merge(row_cells[4])
+        row_cells[5].text = f"{total_sum:.2f}"
+        row_cells[5].paragraphs[0].runs[0].bold = True
+
+        # Дополнительная информация
+        doc.add_paragraph("")
+        doc.add_paragraph("Примечания:")
+        doc.add_paragraph("1. В стоимость работ включены материалы, указанные в смете.")
+        doc.add_paragraph("2. Срок выполнения работ согласовывается дополнительно.")
+        doc.add_paragraph("3. Цены указаны в рублях")
+        doc.add_paragraph("4. Смета действительна в течение 30 дней с даты составления.")
+        doc.add_paragraph("")
+
+        # Подписи
+        p = doc.add_paragraph()
+        p.add_run("Исполнитель: _________________").bold = True
+        p.add_run(" " * 30)
+        p.add_run("Заказчик: _________________").bold = True
+
+        doc.add_paragraph("")
+        p = doc.add_paragraph()
+        p.add_run("Дата: _________________")
+
+        # Сохраняем документ
+        doc.save(file_path)
+
+        messagebox.showinfo("Успех", f"Смета успешно создана!\nФайл сохранен: {file_path}")
+
+        # Предложим открыть файл
+        if messagebox.askyesno("Открыть файл", "Открыть созданный файл сметы?"):
+            os.startfile(file_path)
+
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Не удалось создать документ:\n{str(e)}")
+
+
+def ask_project_info():
+    """Спросить информацию о проекте"""
+    global project_name, customer_name, project_address
+
+    # Создаем окно для ввода информации
+    info_window = tk.Toplevel(root)
+    info_window.title("Информация о проекте")
+    info_window.geometry("500x300")
+    info_window.resizable(False, False)
+    info_window.configure(bg=BG_COLOR)
+    info_window.transient(root)
+    info_window.grab_set()
+
+    # Центрируем окно
+    info_window.update_idletasks()
+    x = root.winfo_x() + (root.winfo_width() - info_window.winfo_width()) // 2
+    y = root.winfo_y() + (root.winfo_height() - info_window.winfo_height()) // 2
+    info_window.geometry(f"+{x}+{y}")
+
+    # Заголовок
+    tk.Label(info_window, text="Введите информацию о проекте",
+             font=('Arial', 14, 'bold'), fg='white', bg=BG_COLOR).pack(pady=(20, 20))
+
+    # Фрейм для полей ввода
+    input_frame = tk.Frame(info_window, bg=BG_COLOR)
+    input_frame.pack(padx=20, pady=10)
+
+    # Название проекта
+    tk.Label(input_frame, text="Название проекта:",
+             font=('Arial', 10), fg='white', bg=BG_COLOR, anchor='w').grid(row=0, column=0, sticky='w', pady=5)
+    project_entry = tk.Entry(input_frame, font=('Arial', 10), width=40)
+    project_entry.grid(row=0, column=1, padx=(10, 0), pady=5)
+    project_entry.insert(0, project_name)
+
+    # Заказчик
+    tk.Label(input_frame, text="Заказчик:",
+             font=('Arial', 10), fg='white', bg=BG_COLOR, anchor='w').grid(row=1, column=0, sticky='w', pady=5)
+    customer_entry = tk.Entry(input_frame, font=('Arial', 10), width=40)
+    customer_entry.grid(row=1, column=1, padx=(10, 0), pady=5)
+    customer_entry.insert(0, customer_name)
+
+    # Адрес
+    tk.Label(input_frame, text="Адрес объекта:",
+             font=('Arial', 10), fg='white', bg=BG_COLOR, anchor='w').grid(row=2, column=0, sticky='w', pady=5)
+    address_entry = tk.Entry(input_frame, font=('Arial', 10), width=40)
+    address_entry.grid(row=2, column=1, padx=(10, 0), pady=5)
+    address_entry.insert(0, project_address)
+
+    # Функция сохранения
+    def save_info():
+        global project_name, customer_name, project_address
+        project_name = project_entry.get().strip()
+        customer_name = customer_entry.get().strip()
+        project_address = address_entry.get().strip()
+
+        if not project_name:
+            messagebox.showwarning("Внимание", "Введите название проекта!")
+            return
+
+        info_window.destroy()
+
+    # Фрейм для кнопок
+    button_frame = tk.Frame(info_window, bg=BG_COLOR)
+    button_frame.pack(pady=20)
+
+    # Кнопка сохранить
+    tk.Button(button_frame, text="Сохранить и создать смету",
+              command=save_info,
+              font=('Arial', 10, 'bold'), bg=ACCENT_COLOR, fg='white',
+              padx=20, pady=5).pack(side='left', padx=(0, 10))
+
+    # Кнопка отмены
+    tk.Button(button_frame, text="Отмена",
+              command=info_window.destroy,
+              font=('Arial', 10), bg='#444444', fg='white',
+              padx=20, pady=5).pack(side='left')
+
+    # Фокус на первом поле
+    project_entry.focus_set()
+
+    # Ожидаем закрытия окна
+    info_window.wait_window()
+
+
+# Создаем главный фрейм
+main_frame = tk.Frame(root, bg=BG_COLOR)
+main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+
+# Заголовок приложения
+title_frame = tk.Frame(main_frame, bg=BG_COLOR)
+title_frame.pack(fill='x', pady=(0, 10))
+
+tk.Label(title_frame, text="ЭЛЕКТРОМОНТАЖНЫЙ КАЛЬКУЛЯТОР",
+         font=('Arial', 16, 'bold'), fg='white', bg=BG_COLOR).pack()
+
+tk.Label(title_frame, text="Выберите категорию работ для расчета стоимости",
+         font=('Arial', 11), fg=ACCENT_COLOR, bg=BG_COLOR).pack()
+
+# Контейнер для вкладок и контента
+content_container = tk.Frame(main_frame, bg=BG_COLOR)
+content_container.pack(fill='both', expand=True)
+
+# Левая панель с кнопками вкладок
+left_panel = tk.Frame(content_container, bg=BG_COLOR, width=350)
+left_panel.pack(side='left', fill='y', padx=(0, 10))
+
+# Правая панель для отображения контента
+right_panel = tk.Frame(content_container, bg=BG_COLOR)
+right_panel.pack(side='right', fill='both', expand=True)
+
+# Панель для общей стоимости и кнопок (сверху справа)
+total_panel = tk.Frame(right_panel, bg=BG_COLOR)
+total_panel.pack(fill='x', pady=(0, 10))
+
+# Общая стоимость по всем категориям
+total_cost_label = tk.Label(total_panel,
+                            text="ИТОГО ПО ВСЕМ КАТЕГОРИЯМ: 0.00 руб.",
+                            font=('Arial', 14, 'bold'),
+                            fg='yellow',
+                            bg=BG_COLOR)
+total_cost_label.pack(side='left')
+
+# Фрейм для кнопок справа
+button_frame = tk.Frame(total_panel, bg=BG_COLOR)
+button_frame.pack(side='right')
+
+# Кнопка создания сметы
+create_estimate_btn = tk.Button(button_frame, text="Создать смету в Word",
+                                command=create_estimate_docx,
+                                font=('Arial', 10, 'bold'),
+                                bg='#2ECC71', fg='white',  # Зеленый цвет для кнопки
+                                relief='raised',
+                                padx=15, pady=5)
+create_estimate_btn.pack(side='left', padx=(10, 0))
+
+if not HAS_DOCX:
+    create_estimate_btn.config(state='disabled', bg='#666666')
+    create_estimate_btn.config(text="Установите python-docx")
+
+# Кнопка очистки всего
+clear_all_btn = tk.Button(button_frame, text="Очистить всё",
+                          command=clear_all_entries,
+                          font=('Arial', 10, 'bold'),
+                          bg='#444444', fg='white',
+                          relief='raised',
+                          padx=15, pady=5)
+clear_all_btn.pack(side='left', padx=(10, 0))
+
+# Фрейм для отображения контента вкладок
+content_display_frame = tk.Frame(right_panel, bg=BG_COLOR)
+content_display_frame.pack(fill='both', expand=True)
+
+# Фрейм для отображения выбранных услуг
+selected_services_frame = tk.Frame(right_panel, bg=BG_COLOR)
+selected_services_frame.pack(fill='x', pady=(10, 0))
+
+# Создаем Canvas для прокрутки кнопок вкладок
+tab_canvas = tk.Canvas(left_panel, bg=BG_COLOR, highlightthickness=0)
+tab_scrollbar = tk.Scrollbar(left_panel, orient="vertical", command=tab_canvas.yview)
+tab_scrollable_frame = tk.Frame(tab_canvas, bg=BG_COLOR)
+
+tab_scrollable_frame.bind(
+    "<Configure>",
+    lambda e: tab_canvas.configure(scrollregion=tab_canvas.bbox("all"))
+)
+
+tab_canvas.create_window((0, 0), window=tab_scrollable_frame, anchor="nw")
+tab_canvas.configure(yscrollcommand=tab_scrollbar.set)
+
+tab_canvas.pack(side="left", fill="both", expand=True)
+tab_scrollbar.pack(side="right", fill="y")
+
+# Инструкция для левой панели
+instructions = tk.Label(tab_scrollable_frame,
+                        text="Категории работ:",
+                        font=('Arial', 10, 'bold'),
+                        fg=ACCENT_COLOR,
+                        bg=BG_COLOR,
+                        anchor='w')
+instructions.pack(fill='x', pady=(0, 10), padx=5)
+
+# Создаем кнопки для всех вкладок
+for i, (tab_name, tab_data) in enumerate(tabs_content.items()):
+    # Кнопка вкладки
+    display_name = tab_name[:30] + '...' if len(tab_name) > 30 else tab_name
+    tab_btn = tk.Button(tab_scrollable_frame, text=f'▶ {display_name}',
+                        font=('Arial', 10),
+                        bg='#333333', fg='white',
+                        activebackground=ACCENT_COLOR,
+                        activeforeground='white',
+                        relief='flat',
+                        bd=1,
+                        width=35,
+                        anchor='w',
+                        padx=10,
+                        pady=8,
+                        command=lambda name=tab_name: toggle_tab(name))
+    tab_btn.pack(fill='x', pady=(0, 2))
+    tab_buttons[tab_name] = tab_btn
+
+    # Начальное состояние (закрыта)
+    tab_states[tab_name] = False
+
+    # Создаем контент для вкладки
+    if tab_data.get('has_calculator', False):
+        content_frame = create_calculator_tab(content_display_frame, tab_name, calculator_data[tab_name])
+    else:
+        content_frame = tk.Frame(content_display_frame, bg=CONTENT_BG, relief='solid', bd=1)
+
+        # Заголовок
+        tk.Label(content_frame, text=tab_data['header'],
+                 bg=CONTENT_BG, fg=ACCENT_COLOR,
+                 font=('Arial', 12, 'bold')).pack(anchor='w', padx=15, pady=15)
+
+        tk.Frame(content_frame, height=1, bg=ACCENT_COLOR).pack(fill='x', padx=10, pady=(0, 15))
+
+        # Если есть дополнительные элементы
+        if 'items' in tab_data:
+            for item in tab_data['items']:
+                tk.Label(content_frame, text=f"• {item}",
+                         bg=CONTENT_BG, fg=TEXT_COLOR,
+                         font=('Arial', 10)).pack(anchor='w', padx=20, pady=5)
+
+    # Изначально скрываем все вкладки кроме первой
+    if i != 0:
+        content_frame.pack_forget()
+
+    tab_content_widgets[tab_name] = content_frame
+
+# Открываем первую вкладку по умолчанию
+if tabs_content:
+    first_tab = list(tabs_content.keys())[0]
+    tab_states[first_tab] = True
+    display_name = first_tab[:30] + '...' if len(first_tab) > 30 else first_tab
+    tab_buttons[first_tab].config(text=f'▼ {display_name}')
+
+
+# Добавляем прокрутку колесиком мыши
+def on_mousewheel(event):
+    tab_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+
+tab_canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+# Информация о программе внизу
+info_frame = tk.Frame(main_frame, bg=BG_COLOR)
+info_frame.pack(side='bottom', fill='x', pady=(10, 0))
+
+info_text = "Введите количество в желтые поля. Расчет общей стоимости происходит автоматически."
+if HAS_DOCX:
+    info_text += " Нажмите 'Создать смету в Word' для экспорта."
+
+tk.Label(info_frame,
+         text=info_text,
+         font=('Arial', 9),
+         fg='#cccccc',
+         bg=BG_COLOR).pack()
+
+# Инициализируем отображение выбранных услуг
+update_selected_services()
+
+# Запуск приложения
+root.mainloop()
